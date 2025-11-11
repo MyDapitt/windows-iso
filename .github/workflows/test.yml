@@ -1,7 +1,8 @@
-name: Download ISO and Upload to Archive.org (internetarchive module)
+name: Download ISO and Upload to Archive.org
 
 on:
   workflow_dispatch:
+    # 1. Workflow ini akan meminta 3 input saat Anda menjalankannya
     inputs:
       iso_url:
         description: 'URL download (direct) file ISO'
@@ -16,83 +17,46 @@ on:
 
 jobs:
   download-and-upload:
-    runs-on: windows-2022 
+    runs-on: windows-latest # Bisa juga ubuntu-latest untuk menghemat waktu
 
     steps:
       - name: Download ISO file
-        shell: pwsh 
+        shell: pwsh # Menggunakan PowerShell
         run: |
           $url = "${{ github.event.inputs.iso_url }}"
           $file = "${{ github.event.inputs.iso_filename }}"
+          
           Write-Host "Mulai mengunduh file '$file' dari '$url'..."
+          
+          # 2. Perintah untuk mengunduh file
+          # Ini adalah perintah PowerShell asli untuk download file
           Invoke-WebRequest -Uri $url -OutFile $file -Verbose
+          
           Write-Host "Download selesai."
 
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      # --- PERUBAHAN DI SINI ---
-      - name: Install Python Dependencies (internetarchive)
-        run: |
-          python -m pip install --upgrade pip
-          pip install internetarchive # <-- Mengganti boto3
-
-      # --- PERUBAHAN BESAR DI SINI ---
-      - name: Upload ISO to Archive.org (via internetarchive)
+      - name: Upload ISO to Archive.org
         env:
-          # Penting: Petakan 'secrets' Anda ke nama yang diharapkan modul internetarchive
-          IA_S3_ACCESS_KEY: ${{ secrets.ARCHIVE_USERNAME }}
-          IA_S3_SECRET_KEY: ${{ secrets.ARCHIVE_SECRET }}
+          # 3. Membutuhkan secret yang sama seperti sebelumnya
+          ARCHIVE_USERNAME: ${{ secrets.ARCHIVE_USERNAME }}
+          ARCHIVE_SECRET: ${{ secrets.ARCHIVE_SECRET }}
           
-          # Input dari workflow
+          # 4. Ambil nama file dan identifier dari input
           ISO_NAME: ${{ github.event.inputs.iso_filename }} 
           ARCHIVE_IDENTIFIER: ${{ github.event.inputs.archive_identifier }}
         shell: pwsh
         run: |
-          $pythonScript = @'
-    import os
-    import sys
-    import internetarchive
+          # 5. Cek apakah file hasil download ada
+          if (-not (Test-Path $env:ISO_NAME)) {
+            Write-Error "File ISO '${env:ISO_NAME}' tidak ditemukan. Pastikan URL download benar."
+            exit 1
+          }
 
-    # Ambil variabel dari Environment
-    IDENTIFIER = os.environ.get('ARCHIVE_IDENTIFIER')
-    FILE_NAME = os.environ.get('ISO_NAME')
+          $auth = "${env:ARCHIVE_USERNAME}:${env:ARCHIVE_SECRET}"
+          $baseUrl = "https://s3.us.archive.org/${env:ARCHIVE_IDENTIFIER}"
 
-    # Validasi input
-    if not all([IDENTIFIER, FILE_NAME]):
-        print("Error: Env variable (IDENTIFIER or ISO_NAME) tidak di-set.")
-        sys.exit(1)
-
-    # Cek apakah file lokal ada
-    if not os.path.exists(FILE_NAME):
-        print(f"Error: File lokal '{FILE_NAME}' tidak ditemukan.")
-        sys.exit(1)
-
-    # Kredensial (IA_S3_ACCESS_KEY dan IA_S3_SECRET_KEY)
-    # akan diambil secara otomatis oleh library dari environment variable
-    # yang sudah kita set di 'env:' YAML.
-
-    try:
-        print(f"Mulai mengunggah '{FILE_NAME}' ke item '{IDENTIFIER}' di Archive.org...")
-        
-        # Upload file (sintaksnya jauh lebih sederhana)
-        # Argumen: identifier_item, list_nama_file
-        response = internetarchive.upload(IDENTIFIER, files=[FILE_NAME])
-        
-        # Cek respons
-        if response and response[0].status_code == 200:
-            print("Upload berhasil!")
-            print(f"URL: https://archive.org/details/{IDENTIFIER}")
-        else:
-            print(f"Upload gagal. Status: {response[0].status_code if response else 'Unknown'}")
-            sys.exit(1)
-
-    except Exception as e:
-        print(f"Terjadi error saat upload: {e}")
-        sys.exit(1)
-    '@
-
-          $pythonScript | Out-File -FilePath "upload.py" -Encoding utf8
-          python upload.py
+          Write-Host "Mengunggah ${{ env.ISO_NAME }} ke item: ${env:ARCHIVE_IDENTIFIER}"
+          
+          # 6. Perintah upload menggunakan curl
+          curl -X PUT -u $auth -T "${{ env.ISO_NAME }}" "$baseUrl/${{ env.ISO_NAME }}"
+          
+          Write-Host "Upload selesai."
