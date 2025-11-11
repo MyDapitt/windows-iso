@@ -1,0 +1,50 @@
+name: Build Windows ISO (Windows Runner) and Upload Metadata
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download UUP files
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\uup_download_windows.cmd
+
+      - name: Convert to ISO
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\uup_convert_windows.cmd
+
+      - name: Upload ISO as private artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-iso
+          path: "*.iso"
+
+      - name: Generate build metadata
+        shell: pwsh
+        run: |
+          $iso = Get-ChildItem -Filter *.iso | Select-Object -First 1
+          $hash = Get-FileHash $iso.FullName -Algorithm SHA256
+          $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $content = @"
+          File Name: $($iso.Name)
+          SHA256: $($hash.Hash)
+          Build Date (UTC): $buildDate
+          Repository: $env:GITHUB_REPOSITORY
+          Run ID: $env:GITHUB_RUN_ID
+          "@
+          $content | Out-File -Encoding utf8 build-info.txt
+
+      - name: Upload metadata to Archive.org
+        env:
+          ARCHIVE_USERNAME: ${{ secrets.ARCHIVE_USERNAME }}
+          ARCHIVE_SECRET: ${{ secrets.ARCHIVE_SECRET }}
+        run: |
+          curl -X PUT -u "%ARCHIVE_USERNAME%:%ARCHIVE_SECRET%" ^
+            -T "build-info.txt" ^
+            "https://s3.us.archive.org/windows-build-${{ github.run_id }}/build-info.txt"
