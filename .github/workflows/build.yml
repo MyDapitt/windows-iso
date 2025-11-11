@@ -2,13 +2,11 @@ name: Build Windows ISO (Windows Runner) and Upload Metadata
 
 on:
   workflow_dispatch:
-    # <--- PERUBAHAN 1: Tambahkan 'inputs' ---
-    # Ini akan membuat kotak teks saat Anda menekan 'Run workflow'
     inputs:
       archive_identifier:
         description: 'Nama item unik di Archive.org (cth: windows-11-24h2-beta)'
         required: true
-        default: 'windows-11-generic-build' # Default jika Anda lupa mengisi
+        default: 'windows-11-generic-build' 
 
 jobs:
   build:
@@ -18,15 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ... (Langkah Download UUP dan Convert to ISO tetap sama) ...
-
+      # --- PERUBAHAN DI SINI ---
       - name: Download UUP files
-        run: |
-          powershell -ExecutionPolicy Bypass -File .\uup_download_windows.cmd
+        shell: cmd
+        run: .\uup_download_windows.cmd
 
       - name: Convert to ISO
-        run: |
-          powershell -ExecutionPolicy Bypass -File .\uup_convert_windows.cmd
+        shell: cmd
+        run: .\uup_convert_windows.cmd
+      # --- AKHIR PERUBAHAN ---
 
       - name: Upload ISO as private artifact
         uses: actions/upload-artifact@v4
@@ -45,8 +43,6 @@ jobs:
           }
           $hash = Get-FileHash $iso.FullName -Algorithm SHA256
           $buildDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-          
-          # <--- PERUBAHAN 2: Tambahkan input ke file metadata ---
           $content = @"
           File Name: $($iso.Name)
           SHA256: $($hash.Hash)
@@ -64,13 +60,10 @@ jobs:
           ARCHIVE_USERNAME: ${{ secrets.ARCHIVE_USERNAME }}
           ARCHIVE_SECRET: ${{ secrets.ARCHIVE_SECRET }}
           ISO_NAME: ${{ steps.metadata.outputs.iso_name }} 
-          # <--- PERUBAHAN 3: Ambil 'identifier' dari input workflow ---
           ARCHIVE_IDENTIFIER: ${{ github.event.inputs.archive_identifier }}
         shell: pwsh
         run: |
           $auth = "${env:ARCHIVE_USERNAME}:${env:ARCHIVE_SECRET}"
-          
-          # <--- PERUBAHAN 4: Bangun baseUrl secara dinamis ---
           $baseUrl = "https://s3.us.archive.org/${env:ARCHIVE_IDENTIFIER}"
 
           Write-Host "Mengunggah ke item Archive.org: ${env:ARCHIVE_IDENTIFIER}"
