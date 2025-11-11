@@ -1,0 +1,62 @@
+name: Download ISO and Upload to Archive.org
+
+on:
+  workflow_dispatch:
+    # 1. Workflow ini akan meminta 3 input saat Anda menjalankannya
+    inputs:
+      iso_url:
+        description: 'URL download (direct) file ISO'
+        required: true
+      iso_filename:
+        description: 'Nama file untuk ISO (cth: windows-11-24h2.iso)'
+        required: true
+        default: 'downloaded.iso'
+      archive_identifier:
+        description: 'Nama item unik di Archive.org (cth: my-iso-collection)'
+        required: true
+
+jobs:
+  download-and-upload:
+    runs-on: windows-latest # Bisa juga ubuntu-latest untuk menghemat waktu
+
+    steps:
+      - name: Download ISO file
+        shell: pwsh # Menggunakan PowerShell
+        run: |
+          $url = "${{ github.event.inputs.iso_url }}"
+          $file = "${{ github.event.inputs.iso_filename }}"
+          
+          Write-Host "Mulai mengunduh file '$file' dari '$url'..."
+          
+          # 2. Perintah untuk mengunduh file
+          # Ini adalah perintah PowerShell asli untuk download file
+          Invoke-WebRequest -Uri $url -OutFile $file -Verbose
+          
+          Write-Host "Download selesai."
+
+      - name: Upload ISO to Archive.org
+        env:
+          # 3. Membutuhkan secret yang sama seperti sebelumnya
+          ARCHIVE_USERNAME: ${{ secrets.ARCHIVE_USERNAME }}
+          ARCHIVE_SECRET: ${{ secrets.ARCHIVE_SECRET }}
+          
+          # 4. Ambil nama file dan identifier dari input
+          ISO_NAME: ${{ github.event.inputs.iso_filename }} 
+          ARCHIVE_IDENTIFIER: ${{ github.event.inputs.archive_identifier }}
+        shell: pwsh
+        run: |
+          # 5. Cek apakah file hasil download ada
+          if (-not (Test-Path $env:ISO_NAME)) {
+            Write-Error "File ISO '${env:ISO_NAME}' tidak ditemukan. Pastikan URL download benar."
+            exit 1
+          }
+
+          $auth = "${env:ARCHIVE_USERNAME}:${env:ARCHIVE_SECRET}"
+          $baseUrl = "https://s3.us.archive.org/${env:ARCHIVE_IDENTIFIER}"
+
+          Write-Host "Mengunggah ${{ env.ISO_NAME }} ke item: ${env:ARCHIVE_IDENTIFIER}"
+          
+          # 6. Perintah upload menggunakan curl
+          curl -X PUT -u $auth -T "${{ env.ISO_NAME }}" "$baseUrl/${{ env.ISO_NAME }}"
+          
+          Write-Host "Upload selesai."
