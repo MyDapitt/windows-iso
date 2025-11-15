@@ -6,11 +6,11 @@ on:
       build_variant:
         description: "BLISS_BUILD_VARIANT (vanilla/gapps/foss/microg)"
         required: false
-        default: "vanilla"
+        default: "gapps"
       special_variant:
         description: "BLISS_SPECIAL_VARIANT (misal: -jupiter / -surface)"
         required: false
-        default: ""
+        default: "argon"
 
 jobs:
   build:
